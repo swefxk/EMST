@@ -27,6 +27,12 @@ def build_neighbor_loader(data, mask, num_neighbors, batch_size):
     )
 
 
+def mask_band_feature(event_x, band_feat_idx):
+    masked = event_x.clone()
+    masked[:, band_feat_idx] = 0.0
+    return masked
+
+
 def metrics_from_probs(probs, labels, ks):
     preds = probs.argmax(dim=1)
     acc = (preds == labels).float().mean().item() if labels.numel() else 0.0
@@ -47,6 +53,8 @@ def collect_logits(
     num_neighbors,
     batch_size,
     device,
+    mask_band=False,
+    band_feat_idx=1,
 ):
     loader = build_neighbor_loader(data, mask, num_neighbors, batch_size)
     logits_geo_list = []
@@ -62,7 +70,15 @@ def collect_logits(
         labels_band = batch["event"].y_band[:seed_size]
 
         with torch.no_grad():
-            geo_logits, band_logits = model(batch)
+            if mask_band:
+                masked_x = mask_band_feature(
+                    batch["event"].x, band_feat_idx
+                )
+                geo_logits, band_logits = model(
+                    batch, event_x_override=masked_x
+                )
+            else:
+                geo_logits, band_logits = model(batch)
             geo_logits = geo_logits[:seed_size]
             band_logits = band_logits[:seed_size]
 
@@ -88,6 +104,8 @@ def predict_mc_probs(
     device,
     temperature=None,
     mc_dropout=20,
+    mask_band=False,
+    band_feat_idx=1,
 ):
     loader = build_neighbor_loader(data, mask, num_neighbors, batch_size)
     probs_geo_list = []
@@ -114,7 +132,15 @@ def predict_mc_probs(
         mc_logits_band = []
         with torch.no_grad():
             for _ in range(mc_dropout):
-                geo_logits, band_logits = model(batch)
+                if mask_band:
+                    masked_x = mask_band_feature(
+                        batch["event"].x, band_feat_idx
+                    )
+                    geo_logits, band_logits = model(
+                        batch, event_x_override=masked_x
+                    )
+                else:
+                    geo_logits, band_logits = model(batch)
                 mc_logits_geo.append(geo_logits[:seed_size])
                 mc_logits_band.append(band_logits[:seed_size])
 
@@ -181,6 +207,17 @@ def main():
         help="Use MC-averaged probabilities for ranking metrics.",
     )
     parser.add_argument(
+        "--band_obs_mask",
+        action="store_true",
+        help="Mask band_obs feature for the band head (B1 setting).",
+    )
+    parser.add_argument(
+        "--band_feat_idx",
+        type=int,
+        default=1,
+        help="Index of band_obs feature in event.x.",
+    )
+    parser.add_argument(
         "--prev_event",
         choices=["on", "zero_dt", "off"],
         default="on",
@@ -226,12 +263,25 @@ def main():
         det_outputs = collect_logits(
             data, model, mask, num_neighbors, batch_size, device
         )
+        if args.band_obs_mask:
+            det_band_outputs = collect_logits(
+                data,
+                model,
+                mask,
+                num_neighbors,
+                batch_size,
+                device,
+                mask_band=True,
+                band_feat_idx=args.band_feat_idx,
+            )
+        else:
+            det_band_outputs = det_outputs
         det_probs_geo = probs_from_logits(
             det_outputs["logits_geo"],
             temperature["geo"] if temperature else None,
         )
         det_probs_band = probs_from_logits(
-            det_outputs["logits_band"],
+            det_band_outputs["logits_band"],
             temperature["band"] if temperature else None,
         )
 
@@ -246,20 +296,35 @@ def main():
                 temperature=temperature,
                 mc_dropout=args.mc_dropout,
             )
+            if args.band_obs_mask:
+                mc_band_outputs = predict_mc_probs(
+                    data,
+                    model,
+                    mask,
+                    num_neighbors,
+                    batch_size,
+                    device,
+                    temperature=temperature,
+                    mc_dropout=args.mc_dropout,
+                    mask_band=True,
+                    band_feat_idx=args.band_feat_idx,
+                )
+            else:
+                mc_band_outputs = mc_outputs
             calib_probs_geo = mc_outputs["probs_geo"]
-            calib_probs_band = mc_outputs["probs_band"]
+            calib_probs_band = mc_band_outputs["probs_band"]
             calib_labels_geo = mc_outputs["labels_geo"]
-            calib_labels_band = mc_outputs["labels_band"]
+            calib_labels_band = mc_band_outputs["labels_band"]
             unc_geo = mc_outputs["unc_geo"]
-            unc_band = mc_outputs["unc_band"]
+            unc_band = mc_band_outputs["unc_band"]
             var_geo = mc_outputs["var_geo"]
-            var_band = mc_outputs["var_band"]
+            var_band = mc_band_outputs["var_band"]
             calib_tag = "mc"
         else:
             calib_probs_geo = det_probs_geo
             calib_probs_band = det_probs_band
             calib_labels_geo = det_outputs["labels_geo"]
-            calib_labels_band = det_outputs["labels_band"]
+            calib_labels_band = det_band_outputs["labels_band"]
             unc_geo = torch.zeros(calib_probs_geo.size(0))
             unc_band = torch.zeros(calib_probs_band.size(0))
             var_geo = torch.zeros(calib_probs_geo.size(0))
@@ -269,7 +334,7 @@ def main():
         rank_probs_geo = calib_probs_geo if args.rank_from_mc else det_probs_geo
         rank_probs_band = calib_probs_band if args.rank_from_mc else det_probs_band
         rank_labels_geo = det_outputs["labels_geo"]
-        rank_labels_band = det_outputs["labels_band"]
+        rank_labels_band = det_band_outputs["labels_band"]
         rank_tag = "mc" if args.rank_from_mc else "det"
 
         geo_acc, geo_mrr, geo_hits = metrics_from_probs(

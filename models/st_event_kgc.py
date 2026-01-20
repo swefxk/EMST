@@ -73,10 +73,14 @@ class STEventKGC(nn.Module):
             nn.Linear(hidden_dim, num_band),
         )
 
-    def forward(self, data):
+    def forward(self, data, event_x_override=None):
         x_dict = {}
         for node_type in self.node_lin:
-            x_dict[node_type] = self.node_lin[node_type](data[node_type].x)
+            if node_type == "event" and event_x_override is not None:
+                x_in = event_x_override
+            else:
+                x_in = data[node_type].x
+            x_dict[node_type] = self.node_lin[node_type](x_in)
 
         edge_index_dict = data.edge_index_dict
         edge_attr_dict = {}

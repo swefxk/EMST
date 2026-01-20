@@ -21,7 +21,22 @@ def build_neighbor_loader(data, mask, num_neighbors, batch_size):
     )
 
 
-def collect_logits(data, model, mask, num_neighbors, batch_size, device):
+def mask_band_feature(event_x, band_feat_idx):
+    masked = event_x.clone()
+    masked[:, band_feat_idx] = 0.0
+    return masked
+
+
+def collect_logits(
+    data,
+    model,
+    mask,
+    num_neighbors,
+    batch_size,
+    device,
+    mask_band=False,
+    band_feat_idx=1,
+):
     loader = build_neighbor_loader(data, mask, num_neighbors, batch_size)
     model.eval()
     logits_geo = []
@@ -32,7 +47,15 @@ def collect_logits(data, model, mask, num_neighbors, batch_size, device):
         for batch in loader:
             batch = batch.to(device)
             seed_size = batch["event"].batch_size
-            geo_logits, band_logits = model(batch)
+            if mask_band:
+                masked_x = mask_band_feature(
+                    batch["event"].x, band_feat_idx
+                )
+                geo_logits, band_logits = model(
+                    batch, event_x_override=masked_x
+                )
+            else:
+                geo_logits, band_logits = model(batch)
             logits_geo.append(geo_logits[:seed_size].detach().cpu())
             logits_band.append(band_logits[:seed_size].detach().cpu())
             labels_geo.append(batch["event"].y_geo[:seed_size].cpu())
@@ -69,6 +92,17 @@ def main():
     parser.add_argument("--out", required=True, help="Output calibration json.")
     parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument(
+        "--band_obs_mask",
+        action="store_true",
+        help="Mask band_obs feature when calibrating band logits.",
+    )
+    parser.add_argument(
+        "--band_feat_idx",
+        type=int,
+        default=1,
+        help="Index of band_obs feature in event.x.",
+    )
+    parser.add_argument(
         "--prev_event",
         choices=["on", "zero_dt", "off"],
         default="on",
@@ -102,7 +136,19 @@ def main():
         config["train"]["num_neighbors"],
         config["train"]["batch_size"],
         device,
+        mask_band=False,
     )
+    if args.band_obs_mask:
+        _, _, logits_band, labels_band = collect_logits(
+            data,
+            model,
+            data["event"].valid_mask,
+            config["train"]["num_neighbors"],
+            config["train"]["batch_size"],
+            device,
+            mask_band=True,
+            band_feat_idx=args.band_feat_idx,
+        )
 
     geo_temp = optimize_temperature(
         logits_geo,

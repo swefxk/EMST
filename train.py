@@ -25,11 +25,28 @@ def build_neighbor_loader(data, mask, num_neighbors, batch_size, shuffle=True):
     )
 
 
+def mask_band_feature(event_x, band_feat_idx):
+    masked = event_x.clone()
+    masked[:, band_feat_idx] = 0.0
+    return masked
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True, help="Path to pyg .pt file.")
     parser.add_argument("--save", required=True, help="Model checkpoint path.")
     parser.add_argument("--config", default="configs/default.yaml")
+    parser.add_argument(
+        "--band_obs_mask",
+        action="store_true",
+        help="Mask band_obs feature for the band head (B1 setting).",
+    )
+    parser.add_argument(
+        "--band_feat_idx",
+        type=int,
+        default=1,
+        help="Index of band_obs feature in event.x.",
+    )
     parser.add_argument(
         "--prev_event",
         choices=["on", "zero_dt", "off"],
@@ -82,6 +99,12 @@ def main():
             batch = batch.to(device)
             geo_logits, band_logits = model(batch)
             seed_size = batch["event"].batch_size
+
+            if args.band_obs_mask:
+                masked_x = mask_band_feature(
+                    batch["event"].x, args.band_feat_idx
+                )
+                _, band_logits = model(batch, event_x_override=masked_x)
 
             geo_labels = batch["event"].y_geo[:seed_size]
             band_labels = batch["event"].y_band[:seed_size]
