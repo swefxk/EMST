@@ -97,7 +97,7 @@ def risk_coverage_curve(probs, labels, uncertainty, num_points=10):
     return results
 
 
-def set_prev_event_edges(data, split):
+def set_prev_event_edges(data, split, mode="on"):
     key_index = f"prev_event_{split}_edge_index"
     key_attr = f"prev_event_{split}_edge_attr"
     if hasattr(data["event"], key_index) and hasattr(data["event"], key_attr):
@@ -107,5 +107,15 @@ def set_prev_event_edges(data, split):
         data["event", "prev_event", "event"].edge_attr = getattr(
             data["event"], key_attr
         )
+        if mode == "off":
+            data["event", "prev_event", "event"].edge_index = torch.empty(
+                (2, 0), dtype=torch.long
+            )
+            data["event", "prev_event", "event"].edge_attr = torch.empty(
+                (0, 1), dtype=torch.float32
+            )
+        elif mode == "zero_dt":
+            edge_attr = data["event", "prev_event", "event"].edge_attr
+            data["event", "prev_event", "event"].edge_attr = torch.zeros_like(edge_attr)
         return True
     return False

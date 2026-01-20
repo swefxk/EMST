@@ -30,6 +30,12 @@ def main():
     parser.add_argument("--data", required=True, help="Path to pyg .pt file.")
     parser.add_argument("--save", required=True, help="Model checkpoint path.")
     parser.add_argument("--config", default="configs/default.yaml")
+    parser.add_argument(
+        "--prev_event",
+        choices=["on", "zero_dt", "off"],
+        default="on",
+        help="Prev_event usage: on, zero_dt, or off.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -37,7 +43,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(args.data)
-    set_prev_event_edges(data, "train")
+    set_prev_event_edges(data, "train", mode=args.prev_event)
 
     in_dims = {k: data[k].x.size(-1) for k in data.node_types}
     model = STEventKGC(
