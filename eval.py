@@ -194,11 +194,22 @@ def nll_from_probs(probs, labels):
     return F.nll_loss(log_probs, labels).item()
 
 
+def summarize_risk_coverage(rc_list, targets=(1.0, 0.8, 0.6, 0.4)):
+    if not rc_list:
+        return {}
+    summary = {}
+    for target in targets:
+        closest = min(rc_list, key=lambda r: abs(r["coverage"] - target))
+        summary[target] = closest["accuracy"]
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True, help="Path to pyg .pt file.")
     parser.add_argument("--ckpt", required=True, help="Path to checkpoint.")
     parser.add_argument("--config", default="configs/default.yaml")
+    parser.add_argument("--seed", type=int, default=None, help="Override seed.")
     parser.add_argument("--calib", default=None, help="Calibration json path.")
     parser.add_argument("--mc_dropout", type=int, default=0)
     parser.add_argument(
@@ -227,7 +238,8 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
-    seed_everything(config["seed"])
+    seed = config["seed"] if args.seed is None else args.seed
+    seed_everything(seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(args.data)
@@ -359,6 +371,8 @@ def main():
 
         geo_rc = risk_coverage_curve(calib_probs_geo, calib_labels_geo, unc_geo)
         band_rc = risk_coverage_curve(calib_probs_band, calib_labels_band, unc_band)
+        geo_rc_summary = summarize_risk_coverage(geo_rc)
+        band_rc_summary = summarize_risk_coverage(band_rc)
 
         print(
             f"{split_name} rank[{rank_tag}] "
@@ -380,6 +394,8 @@ def main():
         print(f"{split_name} band_unc_var_mean {var_band.mean().item():.6f}")
         print(f"{split_name} geo_risk_coverage {geo_rc}")
         print(f"{split_name} band_risk_coverage {band_rc}")
+        print(f"{split_name} geo_rc_summary {geo_rc_summary}")
+        print(f"{split_name} band_rc_summary {band_rc_summary}")
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ def main():
     parser.add_argument("--data", required=True, help="Path to pyg .pt file.")
     parser.add_argument("--save", required=True, help="Model checkpoint path.")
     parser.add_argument("--config", default="configs/default.yaml")
+    parser.add_argument("--seed", type=int, default=None, help="Override seed.")
     parser.add_argument(
         "--band_obs_mask",
         action="store_true",
@@ -56,7 +57,8 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
-    seed_everything(config["seed"])
+    seed = config["seed"] if args.seed is None else args.seed
+    seed_everything(seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(args.data)
