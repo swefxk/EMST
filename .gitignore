@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+.conda/
+.idea/
+.vscode/
+
+data/
+checkpoints/
+*.pt
+*.pth
+*.json
+*.log
+
+agent-tools/
+terminals/
