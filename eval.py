@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 
 import torch
 from torch.nn import functional as F
@@ -234,6 +235,11 @@ def main():
         default="on",
         help="Prev_event usage: on, zero_dt, or off.",
     )
+    parser.add_argument(
+        "--out_metrics",
+        default=None,
+        help="Optional path to save metrics JSON.",
+    )
     parser.add_argument("--batch_size", type=int, default=None)
     args = parser.parse_args()
 
@@ -266,6 +272,7 @@ def main():
     batch_size = args.batch_size or config["train"]["batch_size"]
     hits_ks = config["eval"]["hits_ks"]
 
+    metrics_payload = {"splits": {}}
     for split_name, mask in [
         ("valid", data["event"].valid_mask),
         ("test", data["event"].test_mask),
@@ -355,6 +362,8 @@ def main():
         band_acc, band_mrr, band_hits = metrics_from_probs(
             rank_probs_band, rank_labels_band, hits_ks
         )
+        geo_hits10 = geo_hits.get(10, 0.0)
+        band_hits10 = band_hits.get(10, 0.0)
 
         geo_nll = nll_from_probs(calib_probs_geo, calib_labels_geo)
         band_nll = nll_from_probs(calib_probs_band, calib_labels_band)
@@ -396,6 +405,52 @@ def main():
         print(f"{split_name} band_risk_coverage {band_rc}")
         print(f"{split_name} geo_rc_summary {geo_rc_summary}")
         print(f"{split_name} band_rc_summary {band_rc_summary}")
+
+        metrics_payload["splits"][split_name] = {
+            "rank": {
+                "tag": rank_tag,
+                "geo": {
+                    "acc": geo_acc,
+                    "mrr": geo_mrr,
+                    "hits": geo_hits,
+                    "hits10": geo_hits10,
+                },
+                "band": {
+                    "acc": band_acc,
+                    "mrr": band_mrr,
+                    "hits": band_hits,
+                    "hits10": band_hits10,
+                },
+            },
+            "calib": {
+                "tag": calib_tag,
+                "geo": {
+                    "nll": geo_nll,
+                    "ece": geo_ece,
+                    "brier": geo_brier,
+                },
+                "band": {
+                    "nll": band_nll,
+                    "ece": band_ece,
+                    "brier": band_brier,
+                },
+            },
+            "uncertainty": {
+                "geo_var_mean": var_geo.mean().item(),
+                "band_var_mean": var_band.mean().item(),
+                "geo_rc": geo_rc,
+                "band_rc": band_rc,
+                "geo_rc_summary": geo_rc_summary,
+                "band_rc_summary": band_rc_summary,
+            },
+        }
+
+    if args.out_metrics:
+        out_dir = os.path.dirname(args.out_metrics)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        with open(args.out_metrics, "w", encoding="utf-8") as f:
+            json.dump(metrics_payload, f, indent=2)
 
 
 if __name__ == "__main__":
