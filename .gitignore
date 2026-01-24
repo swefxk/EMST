@@ -11,6 +11,12 @@ checkpoints/
 *.pth
 *.json
 *.log
+artifacts/
+runs/
 
 agent-tools/
 terminals/
+
+!stats/*.json
+!band_difficulty/*.json
+!checkpoints/ablation_a012_stats.json
