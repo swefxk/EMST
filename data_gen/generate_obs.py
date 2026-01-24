@@ -114,6 +114,7 @@ def generate_observations(config, rng, truth_events, sensors, geocells):
     detect_b = obs_cfg.get("detect_b", 1.0)
     metric = obs_cfg.get("distance_metric", "manhattan")
 
+    band_drift_max = int(obs_cfg.get("band_drift_max", 1))
     for event in truth_events:
         event_pos = geocell_pos.get(event["geocell_id"], (0, 0))
         candidates = []
@@ -143,8 +144,10 @@ def generate_observations(config, rng, truth_events, sensors, geocells):
                 continue
 
             band_obs = event["band_id_true"]
-            if rng.random() < obs_cfg["band_drift_prob"]:
-                drift = int(rng.choice([-1, 1]))
+            if rng.random() < obs_cfg["band_drift_prob"] and band_drift_max > 0:
+                drift = int(rng.integers(-band_drift_max, band_drift_max + 1))
+                if drift == 0:
+                    drift = int(rng.choice([-1, 1]))
                 band_obs = int(np.clip(band_obs + drift, 0, num_bands - 1))
 
             power_obs = event["power"] + rng.normal(0.0, obs_cfg["power_noise_std"])

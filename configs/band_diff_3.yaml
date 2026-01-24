@@ -21,8 +21,8 @@ data:
   obs:
     base_p_fn: 0.15
     base_p_fp: 0.004
-    band_drift_prob: 0.12
-    band_drift_max: 1
+    band_drift_prob: 0.30
+    band_drift_max: 3
     power_noise_std: 1.0
     bw_noise_std: 0.5
     radius: 5
