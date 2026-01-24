@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import numpy as np
 
 import torch
 from torch.nn import functional as F
@@ -205,6 +206,18 @@ def summarize_risk_coverage(rc_list, targets=(1.0, 0.8, 0.6, 0.4)):
     return summary
 
 
+def tensor_stats(values):
+    if values.numel() == 0:
+        return {"mean": 0.0, "p50": 0.0, "p90": 0.0, "p99": 0.0}
+    arr = values.detach().cpu().numpy()
+    return {
+        "mean": float(arr.mean()),
+        "p50": float(np.quantile(arr, 0.5)),
+        "p90": float(np.quantile(arr, 0.9)),
+        "p99": float(np.quantile(arr, 0.99)),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True, help="Path to pyg .pt file.")
@@ -392,6 +405,10 @@ def main():
         band_rc = risk_coverage_curve(calib_probs_band, calib_labels_band, unc_band)
         geo_rc_summary = summarize_risk_coverage(geo_rc)
         band_rc_summary = summarize_risk_coverage(band_rc)
+        geo_entropy_stats = tensor_stats(unc_geo)
+        band_entropy_stats = tensor_stats(unc_band)
+        geo_var_stats = tensor_stats(var_geo)
+        band_var_stats = tensor_stats(var_band)
 
         print(
             f"{split_name} rank[{rank_tag}] "
@@ -448,6 +465,10 @@ def main():
             "uncertainty": {
                 "geo_var_mean": var_geo.mean().item(),
                 "band_var_mean": var_band.mean().item(),
+                "geo_entropy_stats": geo_entropy_stats,
+                "band_entropy_stats": band_entropy_stats,
+                "geo_var_stats": geo_var_stats,
+                "band_var_stats": band_var_stats,
                 "geo_rc": geo_rc,
                 "band_rc": band_rc,
                 "geo_rc_summary": geo_rc_summary,

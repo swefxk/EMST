@@ -22,9 +22,12 @@ Frozen experimental artifacts for paper submission. All results are traceable to
 - **Calibration & uncertainty**:
   - Reliability diagram: `figures/reliability_diagram.png`
   - Deterministic metrics: `stats/default_metrics.json`
+  - TS calibrated metrics: `stats/default_calib_metrics.json`
+  - MC Dropout metrics: `stats/default_mc_metrics.json`
 - **Band difficulty curve**:
   - Table: `band_difficulty/band_difficulty.tsv`
   - Figure: `figures/band_difficulty_curve.png`
+  - Calibration table: `band_difficulty/band_calib.tsv`
 
 ## Supplemental (Δt explanations)
 - Encoding ablations (seed=0): log/sincos runs (see experiment logs)

@@ -49,6 +49,11 @@ run_py "$ROOT_DIR/eval.py" \
   --data "$ROOT_DIR/data/synth1/pyg.pt" \
   --ckpt "$ROOT_DIR/checkpoints/synth1/model.pt" \
   --calib "$ROOT_DIR/checkpoints/synth1/calib.json" \
+  --out_metrics "$ROOT_DIR/stats/default_calib_metrics.json" | tee "$OUT_DIR/eval_calib.log"
+run_py "$ROOT_DIR/eval.py" \
+  --data "$ROOT_DIR/data/synth1/pyg.pt" \
+  --ckpt "$ROOT_DIR/checkpoints/synth1/model.pt" \
+  --calib "$ROOT_DIR/checkpoints/synth1/calib.json" \
   --mc_dropout 20 \
   --out_metrics "$ROOT_DIR/stats/default_mc_metrics.json" | tee "$OUT_DIR/eval_mc.log"
 
@@ -88,6 +93,29 @@ run_py "$ROOT_DIR/experiments/plot_reliability.py" \
   --split test \
   --out "$ROOT_DIR/figures/reliability_diagram.png"
 
+echo "[9/8] Band difficulty curve + calibration table"
+run_py "$ROOT_DIR/experiments/band_difficulty.py" \
+  --configs "$ROOT_DIR/configs/band_diff_1.yaml" "$ROOT_DIR/configs/band_diff_3.yaml" "$ROOT_DIR/configs/band_diff_5.yaml" \
+  --labels d1 d3 d5 --seed 0
+for diff in 1 3 5; do
+  run_py "$ROOT_DIR/calibrate.py" \
+    --data "$ROOT_DIR/data/band_d${diff}/pyg.pt" \
+    --ckpt "$ROOT_DIR/checkpoints/band_d${diff}_default.pt" \
+    --out "$ROOT_DIR/band_difficulty/d${diff}_calib.json" \
+    --config "$ROOT_DIR/configs/band_diff_${diff}.yaml"
+  run_py "$ROOT_DIR/eval.py" \
+    --data "$ROOT_DIR/data/band_d${diff}/pyg.pt" \
+    --ckpt "$ROOT_DIR/checkpoints/band_d${diff}_default.pt" \
+    --calib "$ROOT_DIR/band_difficulty/d${diff}_calib.json" \
+    --config "$ROOT_DIR/configs/band_diff_${diff}.yaml" \
+    --out_metrics "$ROOT_DIR/band_difficulty/d${diff}_calib_metrics.json"
+done
+run_py "$ROOT_DIR/experiments/band_calibration_table.py" \
+  --labels d1,d3,d5 --out "$ROOT_DIR/band_difficulty/band_calib.tsv"
+run_py "$ROOT_DIR/experiments/plot_band_difficulty.py" \
+  --input "$ROOT_DIR/band_difficulty/band_difficulty.json" \
+  --out "$ROOT_DIR/figures/band_difficulty_curve.png"
+
 echo "[copy] Collect artifacts"
 mkdir -p "$OUT_DIR/results"
 cp "$ROOT_DIR/RESULTS.md" "$OUT_DIR/"
@@ -97,6 +125,7 @@ cp "$ROOT_DIR/configs/default.yaml" "$OUT_DIR/"
 cp "$ROOT_DIR/stats/ablation_a012_table.tsv" "$OUT_DIR/results/"
 cp "$ROOT_DIR/checkpoints/ablation_a012_stats.json" "$OUT_DIR/results/"
 cp "$ROOT_DIR/stats/default_metrics.json" "$OUT_DIR/results/"
+cp "$ROOT_DIR/stats/default_calib_metrics.json" "$OUT_DIR/results/"
 cp "$ROOT_DIR/stats/default_mc_metrics.json" "$OUT_DIR/results/"
 cp "$ROOT_DIR/stats/b1_metrics.json" "$OUT_DIR/results/"
 cp "$ROOT_DIR/figures/geo_ablation_mrr.png" "$OUT_DIR/results/"
@@ -104,5 +133,6 @@ cp "$ROOT_DIR/figures/band_b1_compare.png" "$OUT_DIR/results/"
 cp "$ROOT_DIR/figures/reliability_diagram.png" "$OUT_DIR/results/"
 cp "$ROOT_DIR/figures/band_difficulty_curve.png" "$OUT_DIR/results/"
 cp "$ROOT_DIR/band_difficulty/band_difficulty.tsv" "$OUT_DIR/results/"
+cp "$ROOT_DIR/band_difficulty/band_calib.tsv" "$OUT_DIR/results/"
 
 echo "Done. Artifacts in: $OUT_DIR"
