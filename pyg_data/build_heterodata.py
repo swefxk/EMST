@@ -216,18 +216,27 @@ def main():
         if len(edge_src) == 0:
             edge_index = torch.empty((2, 0), dtype=torch.long)
             edge_attr = torch.empty((0, 1), dtype=torch.float32)
+            log_mean = torch.tensor(0.0, dtype=torch.float32)
+            log_std = torch.tensor(1.0, dtype=torch.float32)
         else:
             edge_index = torch.tensor([edge_src, edge_dst], dtype=torch.long)
             dt_norm = [dt / max_t if max_t > 0 else 0.0 for dt in edge_dt]
             edge_attr = torch.tensor(dt_norm, dtype=torch.float32).view(-1, 1)
-        return edge_index, edge_attr
+            dt_log = torch.log1p(edge_attr)
+            log_mean = dt_log.mean()
+            log_std = dt_log.std(unbiased=False)
+            if log_std.item() == 0.0:
+                log_std = torch.tensor(1.0, dtype=torch.float32)
+        return edge_index, edge_attr, log_mean, log_std
 
     prev_edges = {}
     for split_name, split_events in events_by_split.items():
-        edge_index, edge_attr = build_prev_tensors(split_events)
+        edge_index, edge_attr, log_mean, log_std = build_prev_tensors(split_events)
         prev_edges[split_name] = (edge_index, edge_attr)
         setattr(data["event"], f"prev_event_{split_name}_edge_index", edge_index)
         setattr(data["event"], f"prev_event_{split_name}_edge_attr", edge_attr)
+        setattr(data["event"], f"prev_event_{split_name}_dt_log_mean", log_mean)
+        setattr(data["event"], f"prev_event_{split_name}_dt_log_std", log_std)
 
     data["event", "prev_event", "event"].edge_index = prev_edges["train"][0]
     data["event", "prev_event", "event"].edge_attr = prev_edges["train"][1]

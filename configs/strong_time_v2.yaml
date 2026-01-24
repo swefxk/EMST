@@ -32,11 +32,11 @@ data:
   prev_event:
     k: 5
   strong_time:
-    enable: false
-    geo_speed: 0.4
-    geo_max_step: 3
-    band_drift_scale: 0.3
-    band_max_step: 3
+    enable: true
+    geo_speed: 1.5
+    geo_max_step: 6
+    band_drift_scale: 1.2
+    band_max_step: 6
 
 splits:
   train: 0.6

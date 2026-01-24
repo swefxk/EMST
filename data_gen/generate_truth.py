@@ -56,6 +56,16 @@ def generate_truth_events(config, rng):
 
     events = []
     event_id = 0
+    strong_cfg = data_cfg.get("strong_time", {})
+    strong_enable = bool(strong_cfg.get("enable", False))
+    prev_t = None
+    prev_x = None
+    prev_y = None
+    prev_band = None
+    geo_speed = float(strong_cfg.get("geo_speed", 0.4))
+    geo_max_step = int(strong_cfg.get("geo_max_step", 3))
+    band_drift_scale = float(strong_cfg.get("band_drift_scale", 0.3))
+    band_max_step = int(strong_cfg.get("band_max_step", 3))
     for t in range(t_steps):
         if isinstance(events_rate, (list, tuple)):
             n_events = rng.integers(events_rate[0], events_rate[1] + 1)
@@ -66,8 +76,25 @@ def generate_truth_events(config, rng):
             t_start = int(t)
             t_end = int(min(t_steps - 1, t_start + duration))
             t_center = (t_start + t_end) / 2.0
-            geocell_id = int(rng.integers(0, num_geocell))
-            band_id = int(rng.integers(0, num_bands))
+            if strong_enable and prev_t is not None:
+                dt = max(1.0, t_start - prev_t)
+                step = max(1, int(round(geo_speed * dt)))
+                step = min(step, geo_max_step)
+                dx = int(rng.integers(-step, step + 1))
+                dy = int(rng.integers(-step, step + 1))
+                x = int(np.clip(prev_x + dx, 0, nx - 1))
+                y = int(np.clip(prev_y + dy, 0, ny - 1))
+                geocell_id = y * nx + x
+
+                drift = int(round(band_drift_scale * dt))
+                drift = min(drift, band_max_step)
+                if drift == 0:
+                    band_id = prev_band
+                else:
+                    band_id = int((prev_band + rng.integers(-drift, drift + 1)) % num_bands)
+            else:
+                geocell_id = int(rng.integers(0, num_geocell))
+                band_id = int(rng.integers(0, num_bands))
             power = max(0.1, rng.normal(power_mean, power_std))
             bw = max(0.1, rng.normal(bw_mean, bw_std))
 
@@ -83,6 +110,10 @@ def generate_truth_events(config, rng):
                     "bw": bw,
                 }
             )
+            prev_t = t_start
+            prev_band = band_id
+            prev_x = geocell_id % nx
+            prev_y = geocell_id // nx
             event_id += 1
     return events
 

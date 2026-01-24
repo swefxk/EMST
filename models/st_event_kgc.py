@@ -14,6 +14,8 @@ class STEventKGC(nn.Module):
         te_dim=16,
         heads=2,
         dropout=0.2,
+        dt_encoding="raw",
+        dt_freqs=None,
     ):
         super().__init__()
         if hidden_dim % heads != 0:
@@ -28,8 +30,17 @@ class STEventKGC(nn.Module):
         for node_type, in_dim in in_dims.items():
             self.node_lin[node_type] = nn.Linear(in_dim, hidden_dim)
 
+        self.dt_encoding = dt_encoding
+        if dt_freqs is None:
+            dt_freqs = [1, 2, 4, 8]
+        self.register_buffer(
+            "dt_freqs",
+            torch.tensor(dt_freqs, dtype=torch.float32).view(1, -1),
+            persistent=False,
+        )
+        dt_in_dim = 1 if dt_encoding in ("raw", "log") else 2 * len(dt_freqs)
         self.time_mlp = nn.Sequential(
-            nn.Linear(1, te_dim),
+            nn.Linear(dt_in_dim, te_dim),
             nn.ReLU(),
             nn.Linear(te_dim, te_dim),
         )
@@ -86,7 +97,21 @@ class STEventKGC(nn.Module):
         edge_attr_dict = {}
         if ("event", "prev_event", "event") in data.edge_types:
             edge_attr = data["event", "prev_event", "event"].edge_attr
-            edge_attr_dict[("event", "prev_event", "event")] = self.time_mlp(edge_attr)
+            if self.dt_encoding == "log":
+                dt_log = torch.log1p(edge_attr)
+                mean = getattr(data["event"], "prev_event_dt_log_mean", None)
+                std = getattr(data["event"], "prev_event_dt_log_std", None)
+                if mean is not None and std is not None:
+                    mean = mean.to(edge_attr.device)
+                    std = std.to(edge_attr.device)
+                    dt_log = (dt_log - mean) / std
+                encoded = dt_log
+            elif self.dt_encoding == "sincos":
+                angles = edge_attr * (2 * torch.pi) * self.dt_freqs.to(edge_attr.device)
+                encoded = torch.cat([torch.sin(angles), torch.cos(angles)], dim=1)
+            else:
+                encoded = edge_attr
+            edge_attr_dict[("event", "prev_event", "event")] = self.time_mlp(encoded)
 
         for conv in self.convs:
             out_dict = conv(x_dict, edge_index_dict, edge_attr_dict)

@@ -49,6 +49,12 @@ def main():
         help="Index of band_obs feature in event.x.",
     )
     parser.add_argument(
+        "--dt_encoding",
+        choices=["raw", "log", "sincos"],
+        default=None,
+        help="Override dt encoding (raw/log/sincos).",
+    )
+    parser.add_argument(
         "--prev_event",
         choices=["on", "zero_dt", "off"],
         default="on",
@@ -65,6 +71,8 @@ def main():
     set_prev_event_edges(data, "train", mode=args.prev_event)
 
     in_dims = {k: data[k].x.size(-1) for k in data.node_types}
+    dt_encoding = args.dt_encoding or config["model"].get("dt_encoding", "raw")
+    dt_freqs = config["model"].get("dt_freqs", [1, 2, 4, 8])
     model = STEventKGC(
         in_dims=in_dims,
         num_geocell=data["geocell"].num_nodes,
@@ -73,6 +81,8 @@ def main():
         te_dim=config["model"]["te_dim"],
         heads=config["model"]["heads"],
         dropout=config["model"]["dropout"],
+        dt_encoding=dt_encoding,
+        dt_freqs=dt_freqs,
     ).to(device)
 
     optimizer = torch.optim.AdamW(
