@@ -59,3 +59,9 @@ TS 对 Band 显著降低 NLL/ECE；Geo 的 NLL 小幅下降，但 ECE 上升（�
   - sin/cos encoding: `checkpoints/dt_sincos_seed0.pt` (see eval logs)
 - Strong temporal controls (seed=0): configs `configs/strong_time.yaml`, `configs/strong_time_v2.yaml`  
   (A1/A2 deltas reported in experiment logs; see `PROJECT_PROPOSAL.md` appendix notes.)
+
+### Strong-time stability (3 seeds)
+Appendix table: `stats/strong_time_seed3.tsv`  
+- strong_time: A1 Geo MRR 0.0914±0.0080 vs A2 0.0921±0.0092  
+- strong_time_v2: A1 Geo MRR 0.1142±0.0113 vs A2 0.1138±0.0094  
+结论：Δt 贡献依然边际，稳定性结论成立。
