@@ -75,7 +75,7 @@ def compute_edge_dt_disp(data, config, split):
         return np.array([]), np.array([])
 
     dt_scale = float(
-        config["data"].get("dt_scale", config["data"]["time_steps"])
+        getattr(data["event"], "dt_scale", None) or config["data"].get("dt_scale", config["data"]["time_steps"])
     )
     dt_vals = edge_attr.view(-1).cpu().numpy()[valid] * dt_scale
 
@@ -100,7 +100,7 @@ def compute_event_dt(data, config, split):
         return np.array([])
 
     dt_scale = float(
-        config["data"].get("dt_scale", config["data"]["time_steps"])
+        getattr(data["event"], "dt_scale", None) or config["data"].get("dt_scale", config["data"]["time_steps"])
     )
     dt_vals = edge_attr.view(-1).cpu().numpy() * dt_scale
     dst = edge_index[1].cpu().numpy()
@@ -209,8 +209,70 @@ def main():
             dt_freqs=dt_freqs,
             edge_types=edge_types,
             motion_gate=config["model"].get("motion_gate", False),
+            prev_event_scale=config["model"].get("prev_event_scale", 1.0),
         ).to(device)
         model.load_state_dict(torch.load(args.ckpt, map_location=device))
+        # D4/D5: dt feature and gate stats
+        edge_attr = data["event", "prev_event", "event"].edge_attr.to(device)
+        dt_scale = getattr(data["event"], "dt_scale", None)
+        dt_long = getattr(data["event"], "dt_long_threshold", None)
+        dt_scale = float(dt_scale) if dt_scale is not None else config["data"].get("dt_scale", config["data"]["time_steps"])
+        dt_long = float(dt_long) if dt_long is not None else config["data"].get("dt_long_threshold", config["data"].get("source", {}).get("dt_long_min", 0.0))
+        dt_raw = edge_attr * dt_scale
+        if dt_encoding == "binary_log":
+            dt_log = torch.log1p(dt_raw)
+            mean = getattr(data["event"], "prev_event_dt_raw_log_mean", None)
+            std = getattr(data["event"], "prev_event_dt_raw_log_std", None)
+            if mean is not None and std is not None:
+                dt_log = (dt_log - mean.to(device)) / std.to(device)
+            is_long = (dt_raw >= dt_long).float()
+            dt_feat = torch.cat([is_long, dt_log], dim=1)
+        elif dt_encoding == "log":
+            dt_feat = torch.log1p(edge_attr)
+        elif dt_encoding == "sincos":
+            angles = edge_attr * (2 * torch.pi) * model.dt_freqs.to(edge_attr.device)
+            dt_feat = torch.cat([torch.sin(angles), torch.cos(angles)], dim=1)
+        else:
+            dt_feat = edge_attr
+
+        def feat_stats(tensor):
+            arr = tensor.detach().cpu().numpy()
+            return {
+                "min": float(arr.min()),
+                "mean": float(arr.mean()),
+                "p90": float(np.quantile(arr, 0.9)),
+                "max": float(arr.max()),
+            }
+
+        if dt_feat.numel() > 0:
+            if dt_feat.dim() == 2 and dt_feat.size(1) > 1:
+                diag["dt_feat_stats"] = {
+                    f"dim_{i}": feat_stats(dt_feat[:, i]) for i in range(dt_feat.size(1))
+                }
+            else:
+                diag["dt_feat_stats"] = feat_stats(dt_feat.view(-1))
+            diag["dt_raw_stats"] = feat_stats(dt_raw.view(-1))
+            print(f"D4 dt_raw stats {diag['dt_raw_stats']}")
+            print(f"D4 dt_feat stats {diag['dt_feat_stats']}")
+        if model.dt_gate is not None and dt_feat.numel() > 0:
+            gate = model.dt_gate(dt_feat).view(-1)
+            gate_np = gate.detach().cpu().numpy()
+            diag["gate_stats"] = {
+                "mean": float(gate_np.mean()),
+                "std": float(gate_np.std()),
+                "p90": float(np.quantile(gate_np, 0.9)),
+            }
+            long_mask = (dt_raw.view(-1) >= dt_long).detach().cpu().numpy()
+            if long_mask.any():
+                diag["gate_long_mean"] = float(gate_np[long_mask].mean())
+            if (~long_mask).any():
+                diag["gate_short_mean"] = float(gate_np[~long_mask].mean())
+            print(f"D5 gate stats {diag['gate_stats']}")
+            if "gate_long_mean" in diag:
+                print(
+                    f"D5 gate mean long={diag['gate_long_mean']:.4f} "
+                    f"short={diag.get('gate_short_mean', 0.0):.4f}"
+                )
         logits, labels, nids = collect_geo_logits(
             data,
             model,

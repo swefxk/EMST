@@ -155,6 +155,8 @@ def main():
         dt_freqs=dt_freqs,
         edge_types=edge_types,
         motion_gate=config["model"].get("motion_gate", False),
+        prev_event_scale=config["model"].get("prev_event_scale", 1.0),
+        prev_event_residual_scale=config["model"].get("prev_event_residual_scale", 0.0),
     ).to(device)
     model.load_state_dict(torch.load(args.ckpt, map_location=device))
 

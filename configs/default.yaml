@@ -81,6 +81,8 @@ model:
   band_feat_idx: 1
   motion_gate: false
   source_message: "bi"
+  prev_event_scale: 1.0
+  prev_event_residual_scale: 0.0
 
 train:
   epochs: 10

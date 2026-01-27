@@ -18,6 +18,8 @@ class STEventKGC(nn.Module):
         dt_freqs=None,
         edge_types=None,
         motion_gate=False,
+        prev_event_scale=1.0,
+        prev_event_residual_scale=0.0,
     ):
         super().__init__()
         if hidden_dim % heads != 0:
@@ -35,6 +37,8 @@ class STEventKGC(nn.Module):
         self.dt_encoding = dt_encoding
         self.motion_gate = motion_gate
         self.edge_types = set(edge_types) if edge_types is not None else None
+        self.prev_event_scale = float(prev_event_scale)
+        self.prev_event_residual_scale = float(prev_event_residual_scale)
         if dt_freqs is None:
             dt_freqs = [1, 2, 4, 8]
         self.register_buffer(
@@ -42,7 +46,10 @@ class STEventKGC(nn.Module):
             torch.tensor(dt_freqs, dtype=torch.float32).view(1, -1),
             persistent=False,
         )
-        dt_in_dim = 1 if dt_encoding in ("raw", "log") else 2 * len(dt_freqs)
+        if dt_encoding == "binary_log":
+            dt_in_dim = 2
+        else:
+            dt_in_dim = 1 if dt_encoding in ("raw", "log") else 2 * len(dt_freqs)
         self.time_mlp = nn.Sequential(
             nn.Linear(dt_in_dim, te_dim),
             nn.ReLU(),
@@ -115,9 +122,32 @@ class STEventKGC(nn.Module):
 
         edge_index_dict = data.edge_index_dict
         edge_attr_dict = {}
+        dt_feat = None
+        gate_weights = None
         if ("event", "prev_event", "event") in data.edge_types:
             edge_attr = data["event", "prev_event", "event"].edge_attr
-            if self.dt_encoding == "log":
+            if self.dt_encoding == "binary_log":
+                dt_scale = getattr(data["event"], "dt_scale", None)
+                dt_long = getattr(data["event"], "dt_long_threshold", None)
+                if dt_scale is None:
+                    dt_scale = torch.tensor(1.0, device=edge_attr.device)
+                else:
+                    dt_scale = dt_scale.to(edge_attr.device)
+                if dt_long is None:
+                    dt_long = torch.tensor(0.0, device=edge_attr.device)
+                else:
+                    dt_long = dt_long.to(edge_attr.device)
+                dt_raw = edge_attr * dt_scale
+                dt_log = torch.log1p(dt_raw)
+                mean = getattr(data["event"], "prev_event_dt_raw_log_mean", None)
+                std = getattr(data["event"], "prev_event_dt_raw_log_std", None)
+                if mean is not None and std is not None:
+                    mean = mean.to(edge_attr.device)
+                    std = std.to(edge_attr.device)
+                    dt_log = (dt_log - mean) / std
+                is_long = (dt_raw >= dt_long).float()
+                dt_feat = torch.cat([is_long, dt_log], dim=1)
+            elif self.dt_encoding == "log":
                 dt_feat = torch.log1p(edge_attr)
                 mean = getattr(data["event"], "prev_event_dt_log_mean", None)
                 std = getattr(data["event"], "prev_event_dt_log_std", None)
@@ -132,8 +162,24 @@ class STEventKGC(nn.Module):
                 dt_feat = edge_attr
             encoded = self.time_mlp(dt_feat)
             if self.dt_gate is not None:
-                encoded = encoded * self.dt_gate(dt_feat)
+                gate_weights = self.dt_gate(dt_feat)
+                encoded = encoded * gate_weights
+            if self.prev_event_scale != 1.0:
+                encoded = encoded * self.prev_event_scale
             edge_attr_dict[("event", "prev_event", "event")] = encoded
+
+        if (
+            self.prev_event_residual_scale > 0
+            and gate_weights is not None
+            and ("event", "prev_event", "event") in data.edge_types
+        ):
+            edge_index = data["event", "prev_event", "event"].edge_index
+            if edge_index.numel() > 0:
+                src = edge_index[0]
+                dst = edge_index[1]
+                residual = torch.zeros_like(x_dict["event"])
+                residual.index_add_(0, dst, x_dict["event"][src] * gate_weights)
+                x_dict["event"] = x_dict["event"] + self.prev_event_residual_scale * residual
 
         for conv in self.convs:
             out_dict = conv(x_dict, edge_index_dict, edge_attr_dict)

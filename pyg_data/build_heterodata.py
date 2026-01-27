@@ -331,26 +331,37 @@ def main():
             edge_index = torch.tensor([edge_src, edge_dst], dtype=torch.long)
             dt_norm = [dt / dt_scale if dt_scale > 0 else 0.0 for dt in edge_dt]
             edge_attr = torch.tensor(dt_norm, dtype=torch.float32).view(-1, 1)
-        return edge_index, edge_attr
+        return edge_index, edge_attr, edge_dt
 
     for split_events in events_by_split.values():
         for event in split_events:
             event["_prev_mode"] = prev_mode
 
-    train_edge_index, train_edge_attr = build_prev_tensors(events_by_split["train"])
+    train_edge_index, train_edge_attr, train_dt_raw = build_prev_tensors(
+        events_by_split["train"]
+    )
     if train_edge_attr.numel() == 0:
         train_log_mean = torch.tensor(0.0, dtype=torch.float32)
         train_log_std = torch.tensor(1.0, dtype=torch.float32)
+        train_raw_log_mean = torch.tensor(0.0, dtype=torch.float32)
+        train_raw_log_std = torch.tensor(1.0, dtype=torch.float32)
     else:
         train_dt_log = torch.log1p(train_edge_attr)
         train_log_mean = train_dt_log.mean()
         train_log_std = train_dt_log.std(unbiased=False)
         if train_log_std.item() == 0.0:
             train_log_std = torch.tensor(1.0, dtype=torch.float32)
+        train_raw_log = torch.log1p(
+            torch.tensor(train_dt_raw, dtype=torch.float32).view(-1, 1)
+        )
+        train_raw_log_mean = train_raw_log.mean()
+        train_raw_log_std = train_raw_log.std(unbiased=False)
+        if train_raw_log_std.item() == 0.0:
+            train_raw_log_std = torch.tensor(1.0, dtype=torch.float32)
 
     prev_edges = {}
     for split_name, split_events in events_by_split.items():
-        edge_index, edge_attr = build_prev_tensors(split_events)
+        edge_index, edge_attr, _ = build_prev_tensors(split_events)
         prev_edges[split_name] = (edge_index, edge_attr)
         setattr(data["event"], f"prev_event_{split_name}_edge_index", edge_index)
         setattr(data["event"], f"prev_event_{split_name}_edge_attr", edge_attr)
@@ -364,9 +375,26 @@ def main():
             f"prev_event_{split_name}_dt_log_std",
             train_log_std,
         )
+        setattr(
+            data["event"],
+            f"prev_event_{split_name}_dt_raw_log_mean",
+            train_raw_log_mean,
+        )
+        setattr(
+            data["event"],
+            f"prev_event_{split_name}_dt_raw_log_std",
+            train_raw_log_std,
+        )
 
     data["event", "prev_event", "event"].edge_index = train_edge_index
     data["event", "prev_event", "event"].edge_attr = train_edge_attr
+    data["event"].dt_scale = torch.tensor(dt_scale, dtype=torch.float32)
+    dt_long_threshold = config["data"].get("dt_long_threshold", None)
+    if dt_long_threshold is None:
+        dt_long_threshold = config["data"].get("source", {}).get("dt_long_min", 0.0)
+    data["event"].dt_long_threshold = torch.tensor(
+        float(dt_long_threshold), dtype=torch.float32
+    )
 
     ensure_dir(os.path.dirname(args.out))
     torch.save(data, args.out)

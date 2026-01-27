@@ -6,7 +6,8 @@ data:
   bands: 32
   sensors: 20
   time_steps: 30000
-  dt_scale: 50
+  dt_scale: 20
+  dt_long_threshold: 12
   use_time_feature: false
   use_band_obs_feature: false
   use_power_feature: false
@@ -44,7 +45,7 @@ data:
     detect_b: 0.05
     distance_metric: "manhattan"
   prev_event:
-    k: 1
+    k: 2
     mode: "source"
   source:
     enable: true
@@ -82,11 +83,13 @@ model:
   te_dim: 16
   heads: 2
   dropout: 0.2
-  dt_encoding: "raw"
+  dt_encoding: "binary_log"
   dt_freqs: [1, 2, 4, 8]
   band_feat_idx: 1
   motion_gate: true
   source_message: "source_to_event"
+  prev_event_scale: 10.0
+  prev_event_residual_scale: 2.0
 
 train:
   epochs: 10
