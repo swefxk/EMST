@@ -25,6 +25,9 @@ All results correspond to tag: `emst-paper-20260124` (see `RELEASE_NOTES_v0.1-pa
 - Band difficulty table: `band_difficulty/band_difficulty.tsv`
  - Band calibration table (d1/d3/d5): `band_difficulty/band_calib.tsv`
 
+## Dataset note
+每个事件默认仅由一个传感器观测（`observed_by` 度恒为 1），这是设计选择而非 bug。
+
 ## Baselines (test)
 - Heuristic Geo (sensor geocell distance rank): MRR 0.1076, Hits@10 0.2570  
 - MLP (event.x only): Geo MRR 0.0254, Hits@10 0.0431; Band MRR 0.4984, Hits@10 1.0000
@@ -73,6 +76,8 @@ TS 对 Band 显著降低 NLL/ECE；Geo 的 NLL 小幅下降，但 ECE 上升（�
   - sin/cos encoding: `checkpoints/dt_sincos_seed0.pt` (see eval logs)
 - Strong temporal controls (seed=0): configs `configs/strong_time.yaml`, `configs/strong_time_v2.yaml`  
   (A1/A2 deltas reported in experiment logs; see `PROJECT_PROPOSAL.md` appendix notes.)
+- Δt log 标准化统计使用 train-only，valid/test 复用训练统计（避免 test-time 适配）。
+- Train-only normalization check (seed=0, default): A0 Geo MRR 0.0910, A1 0.1130, A2 0.1150（相对关系保持）。
 
 ### Strong-time stability (3 seeds)
 Appendix table: `stats/strong_time_seed3.tsv`  

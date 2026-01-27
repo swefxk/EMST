@@ -139,6 +139,11 @@ def main():
 
     t_vals = np.array([e["t_center"] for e in events], dtype=np.float32)
     max_t = float(t_vals.max()) if num_events else 1.0
+    dt_scale = float(
+        config["data"].get("dt_scale", config["data"].get("time_steps", max_t))
+    )
+    if dt_scale <= 0:
+        dt_scale = max_t if max_t > 0 else 1.0
     power_vals = np.array([e["power_obs"] for e in events], dtype=np.float32)
     bw_vals = np.array([e["bw_obs"] for e in events], dtype=np.float32)
     power_mean, power_std = float(power_vals.mean()), float(power_vals.std() or 1.0)
@@ -225,30 +230,42 @@ def main():
         if len(edge_src) == 0:
             edge_index = torch.empty((2, 0), dtype=torch.long)
             edge_attr = torch.empty((0, 1), dtype=torch.float32)
-            log_mean = torch.tensor(0.0, dtype=torch.float32)
-            log_std = torch.tensor(1.0, dtype=torch.float32)
         else:
             edge_index = torch.tensor([edge_src, edge_dst], dtype=torch.long)
-            dt_norm = [dt / max_t if max_t > 0 else 0.0 for dt in edge_dt]
+            dt_norm = [dt / dt_scale if dt_scale > 0 else 0.0 for dt in edge_dt]
             edge_attr = torch.tensor(dt_norm, dtype=torch.float32).view(-1, 1)
-            dt_log = torch.log1p(edge_attr)
-            log_mean = dt_log.mean()
-            log_std = dt_log.std(unbiased=False)
-            if log_std.item() == 0.0:
-                log_std = torch.tensor(1.0, dtype=torch.float32)
-        return edge_index, edge_attr, log_mean, log_std
+        return edge_index, edge_attr
+
+    train_edge_index, train_edge_attr = build_prev_tensors(events_by_split["train"])
+    if train_edge_attr.numel() == 0:
+        train_log_mean = torch.tensor(0.0, dtype=torch.float32)
+        train_log_std = torch.tensor(1.0, dtype=torch.float32)
+    else:
+        train_dt_log = torch.log1p(train_edge_attr)
+        train_log_mean = train_dt_log.mean()
+        train_log_std = train_dt_log.std(unbiased=False)
+        if train_log_std.item() == 0.0:
+            train_log_std = torch.tensor(1.0, dtype=torch.float32)
 
     prev_edges = {}
     for split_name, split_events in events_by_split.items():
-        edge_index, edge_attr, log_mean, log_std = build_prev_tensors(split_events)
+        edge_index, edge_attr = build_prev_tensors(split_events)
         prev_edges[split_name] = (edge_index, edge_attr)
         setattr(data["event"], f"prev_event_{split_name}_edge_index", edge_index)
         setattr(data["event"], f"prev_event_{split_name}_edge_attr", edge_attr)
-        setattr(data["event"], f"prev_event_{split_name}_dt_log_mean", log_mean)
-        setattr(data["event"], f"prev_event_{split_name}_dt_log_std", log_std)
+        setattr(
+            data["event"],
+            f"prev_event_{split_name}_dt_log_mean",
+            train_log_mean,
+        )
+        setattr(
+            data["event"],
+            f"prev_event_{split_name}_dt_log_std",
+            train_log_std,
+        )
 
-    data["event", "prev_event", "event"].edge_index = prev_edges["train"][0]
-    data["event", "prev_event", "event"].edge_attr = prev_edges["train"][1]
+    data["event", "prev_event", "event"].edge_index = train_edge_index
+    data["event", "prev_event", "event"].edge_attr = train_edge_attr
 
     ensure_dir(os.path.dirname(args.out))
     torch.save(data, args.out)
