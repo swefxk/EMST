@@ -7,6 +7,9 @@ All results correspond to tag: `emst-paper-20260124` (see `RELEASE_NOTES_v0.1-pa
 - A0/A1/A2 table (Geo/Band, mean±std): `stats/ablation_a012_table.tsv`
 - A0/A1/A2 significance (paired bootstrap/t-test): `checkpoints/ablation_a012_stats.json`
 - Run-based significance summary: `stats/summary.tsv`
+- Geo heuristic baseline: `stats/baseline_heuristic_metrics.json`
+- Event.x-only MLP baseline: `stats/baseline_mlp_metrics.json`
+- prev_event k sweep (A2, seed=0): `stats/prev_event_k_sweep.tsv`
 
 ## Core figures
 - Geo ablation error bars: `figures/geo_ablation_mrr.png`
@@ -21,6 +24,17 @@ All results correspond to tag: `emst-paper-20260124` (see `RELEASE_NOTES_v0.1-pa
 - B1 deterministic metrics: `stats/b1_metrics.json`
 - Band difficulty table: `band_difficulty/band_difficulty.tsv`
  - Band calibration table (d1/d3/d5): `band_difficulty/band_calib.tsv`
+
+## Baselines (test)
+- Heuristic Geo (sensor geocell distance rank): MRR 0.1076, Hits@10 0.2570  
+- MLP (event.x only): Geo MRR 0.0254, Hits@10 0.0431; Band MRR 0.4984, Hits@10 1.0000
+
+## prev_event k sweep (A2, seed=0)
+`stats/prev_event_k_sweep.tsv`  
+- k=1: Geo MRR 0.1083, Hits@10 0.2524  
+- k=4: Geo MRR 0.1161, Hits@10 0.2816  
+- k=8: Geo MRR 0.1273, Hits@10 0.2977  
+- k=16: Geo MRR 0.1134, Hits@10 0.2723
 
 ## Calibration & Uncertainty (实验小节)
 ### Uncalibrated vs Temperature Scaling (TS)

@@ -116,6 +116,24 @@ run_py "$ROOT_DIR/experiments/plot_band_difficulty.py" \
   --input "$ROOT_DIR/band_difficulty/band_difficulty.json" \
   --out "$ROOT_DIR/figures/band_difficulty_curve.png"
 
+echo "[10/8] Baselines + prev_event k sweep"
+run_py "$ROOT_DIR/experiments/baseline_heuristic.py" \
+  --data "$ROOT_DIR/data/synth1/pyg.pt" \
+  --config "$ROOT_DIR/configs/default.yaml" \
+  --out_metrics "$ROOT_DIR/stats/baseline_heuristic_metrics.json"
+run_py "$ROOT_DIR/experiments/baseline_mlp.py" \
+  --data "$ROOT_DIR/data/synth1/pyg.pt" \
+  --config "$ROOT_DIR/configs/default.yaml" \
+  --ckpt "$ROOT_DIR/checkpoints/baseline_mlp.pt" \
+  --out_metrics "$ROOT_DIR/stats/baseline_mlp_metrics.json"
+run_py "$ROOT_DIR/experiments/prev_event_k_sweep.py" \
+  --data_dir "$ROOT_DIR/data/synth1" \
+  --config "$ROOT_DIR/configs/default.yaml" \
+  --k_values 1,4,8,16 \
+  --seed 0 \
+  --out_table "$ROOT_DIR/stats/prev_event_k_sweep.tsv" \
+  --out_json "$ROOT_DIR/stats/prev_event_k_sweep"
+
 echo "[copy] Collect artifacts"
 mkdir -p "$OUT_DIR/results"
 cp "$ROOT_DIR/RESULTS.md" "$OUT_DIR/"
@@ -134,5 +152,8 @@ cp "$ROOT_DIR/figures/reliability_diagram.png" "$OUT_DIR/results/"
 cp "$ROOT_DIR/figures/band_difficulty_curve.png" "$OUT_DIR/results/"
 cp "$ROOT_DIR/band_difficulty/band_difficulty.tsv" "$OUT_DIR/results/"
 cp "$ROOT_DIR/band_difficulty/band_calib.tsv" "$OUT_DIR/results/"
+cp "$ROOT_DIR/stats/baseline_heuristic_metrics.json" "$OUT_DIR/results/"
+cp "$ROOT_DIR/stats/baseline_mlp_metrics.json" "$OUT_DIR/results/"
+cp "$ROOT_DIR/stats/prev_event_k_sweep.tsv" "$OUT_DIR/results/"
 
 echo "Done. Artifacts in: $OUT_DIR"

@@ -70,6 +70,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", required=True, help="Directory of TSV files.")
     parser.add_argument("--config", default="configs/default.yaml", help="Config path.")
+    parser.add_argument(
+        "--k_prev",
+        type=int,
+        default=None,
+        help="Override prev_event k when building edges.",
+    )
     parser.add_argument("--out", required=True, help="Output .pt path.")
     args = parser.parse_args()
 
@@ -207,7 +213,10 @@ def main():
     data["sensor", "located_in", "geocell"].edge_index = edge_sensor_geo
     data["geocell", "rev_located_in", "sensor"].edge_index = edge_sensor_geo.flip(0)
 
-    k_prev = config["data"]["prev_event"]["k"]
+    if args.k_prev is not None:
+        k_prev = args.k_prev
+    else:
+        k_prev = config["data"]["prev_event"]["k"]
 
     def build_prev_tensors(split_events):
         edge_src, edge_dst, edge_dt = build_prev_event_edges(split_events, k_prev)
