@@ -32,12 +32,12 @@ All results correspond to tag: `emst-paper-20260124` (see `RELEASE_NOTES_v0.1-pa
 - Heuristic Geo (sensor geocell distance rank): MRR 0.1076, Hits@10 0.2570  
 - MLP (event.x only): Geo MRR 0.0254, Hits@10 0.0431; Band MRR 0.4984, Hits@10 1.0000
 
-## prev_event k sweep (A2, seed=0)
-`stats/prev_event_k_sweep.tsv`  
-- k=1: Geo MRR 0.1083, Hits@10 0.2524  
-- k=4: Geo MRR 0.1161, Hits@10 0.2816  
-- k=8: Geo MRR 0.1273, Hits@10 0.2977  
-- k=16: Geo MRR 0.1134, Hits@10 0.2723
+## prev_event k sweep (A2, 3 seeds)
+`stats/prev_event_k_sweep_seed3.tsv`  
+- k=1: Geo MRR 0.1061±0.0020, Hits@10 0.2546±0.0049  
+- k=4: Geo MRR 0.1168±0.0052, Hits@10 0.2892±0.0094  
+- k=8: Geo MRR 0.1224±0.0065, Hits@10 0.2943±0.0070  
+- k=16: Geo MRR 0.1146±0.0011, Hits@10 0.2820±0.0087
 
 ## Calibration & Uncertainty (实验小节)
 ### Uncalibrated vs Temperature Scaling (TS)

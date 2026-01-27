@@ -130,9 +130,9 @@ run_py "$ROOT_DIR/experiments/prev_event_k_sweep.py" \
   --data_dir "$ROOT_DIR/data/synth1" \
   --config "$ROOT_DIR/configs/default.yaml" \
   --k_values 1,4,8,16 \
-  --seed 0 \
-  --out_table "$ROOT_DIR/stats/prev_event_k_sweep.tsv" \
-  --out_json "$ROOT_DIR/stats/prev_event_k_sweep"
+  --seeds 0,1,2 \
+  --out_table "$ROOT_DIR/stats/prev_event_k_sweep_seed3.tsv" \
+  --out_json "$ROOT_DIR/stats/prev_event_k_sweep_seed3"
 
 echo "[copy] Collect artifacts"
 mkdir -p "$OUT_DIR/results"
@@ -154,6 +154,6 @@ cp "$ROOT_DIR/band_difficulty/band_difficulty.tsv" "$OUT_DIR/results/"
 cp "$ROOT_DIR/band_difficulty/band_calib.tsv" "$OUT_DIR/results/"
 cp "$ROOT_DIR/stats/baseline_heuristic_metrics.json" "$OUT_DIR/results/"
 cp "$ROOT_DIR/stats/baseline_mlp_metrics.json" "$OUT_DIR/results/"
-cp "$ROOT_DIR/stats/prev_event_k_sweep.tsv" "$OUT_DIR/results/"
+cp "$ROOT_DIR/stats/prev_event_k_sweep_seed3.tsv" "$OUT_DIR/results/"
 
 echo "Done. Artifacts in: $OUT_DIR"
