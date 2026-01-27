@@ -8,6 +8,7 @@ from torch_geometric.loader import NeighborLoader
 from models.st_event_kgc import STEventKGC
 from utils import (
     classification_metrics,
+    filter_edge_types,
     load_config,
     seed_everything,
     set_prev_event_edges,
@@ -45,7 +46,7 @@ def main():
     parser.add_argument(
         "--band_feat_idx",
         type=int,
-        default=1,
+        default=None,
         help="Index of band_obs feature in event.x.",
     )
     parser.add_argument(
@@ -56,7 +57,7 @@ def main():
     )
     parser.add_argument(
         "--prev_event",
-        choices=["on", "zero_dt", "off"],
+        choices=["on", "zero_dt", "off", "shuffle_dt"],
         default="on",
         help="Prev_event usage: on, zero_dt, or off.",
     )
@@ -65,10 +66,18 @@ def main():
     config = load_config(args.config)
     seed = config["seed"] if args.seed is None else args.seed
     seed_everything(seed)
+    band_feat_idx = (
+        args.band_feat_idx
+        if args.band_feat_idx is not None
+        else config["model"].get("band_feat_idx", 1)
+    )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(args.data)
     set_prev_event_edges(data, "train", mode=args.prev_event)
+    edge_types = filter_edge_types(
+        data.edge_types, config["model"].get("source_message", "bi")
+    )
 
     in_dims = {k: data[k].x.size(-1) for k in data.node_types}
     dt_encoding = args.dt_encoding or config["model"].get("dt_encoding", "raw")
@@ -83,6 +92,8 @@ def main():
         dropout=config["model"]["dropout"],
         dt_encoding=dt_encoding,
         dt_freqs=dt_freqs,
+        edge_types=edge_types,
+        motion_gate=config["model"].get("motion_gate", False),
     ).to(device)
 
     optimizer = torch.optim.AdamW(
@@ -114,7 +125,7 @@ def main():
 
             if args.band_obs_mask:
                 masked_x = mask_band_feature(
-                    batch["event"].x, args.band_feat_idx
+                    batch["event"].x, band_feat_idx
                 )
                 _, band_logits = model(batch, event_x_override=masked_x)
 

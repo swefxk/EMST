@@ -6,14 +6,15 @@ data:
   bands: 32
   sensors: 20
   time_steps: 30000
-  use_time_feature: true
-  use_band_obs_feature: true
-  use_power_feature: true
-  use_bw_feature: true
-  use_conf_feature: true
-  events_per_step: 1.2
+  dt_scale: 50
+  use_time_feature: false
+  use_band_obs_feature: false
+  use_power_feature: false
+  use_bw_feature: false
+  use_conf_feature: false
+  events_per_step: 0.0
   event_duration: [5, 50]
-  band_drift_prob: 0.08
+  band_drift_prob: 0.0
   power:
     mean: 10.0
     std: 2.0
@@ -24,41 +25,43 @@ data:
     min: 0.35
     max: 0.95
   obs:
-    base_p_fn: 0.15
-    base_p_fp: 0.004
-    band_drift_prob: 0.12
-    band_drift_max: 1
-    power_noise_std: 1.0
+    base_p_fn: 0.05
+    base_p_fp: 0.002
+    band_drift_prob: 0.0
+    band_drift_max: 0
+    power_noise_std: 0.8
     bw_noise_std: 0.5
-    single_observer: false
+    single_observer: true
     single_observer_mode: "random"
-    fallback_nearest: false
-    range_noise_std: 0.5
+    fallback_nearest: true
+    range_noise_std: 4.0
+    range_bin: 4.0
     fp_range_mode: "uniform"
-    radius: 5
-    mean_observers: 4.0
-    detect_a: 3.0
-    detect_b: 0.6
+    source_sensor_mode: "fixed_mod"
+    radius: 10
+    mean_observers: 1.0
+    detect_a: 5.0
+    detect_b: 0.2
     distance_metric: "manhattan"
   prev_event:
     k: 5
-    mode: "sensor_geo"
+    mode: "source"
   source:
-    enable: false
-    num_sources: 0
+    enable: true
+    num_sources: 300
     events_per_source: 120
-    start_time_max_frac: 0.2
-    dt_short_max: 3
-    dt_long_prob: 0.3
-    dt_long_min: 6
-    dt_long_max: 18
-    speed_min: 0.2
-    speed_max: 0.8
+    start_time_max_frac: 1.0
+    dt_short_max: 2
+    dt_long_prob: 0.5
+    dt_long_min: 12
+    dt_long_max: 40
+    speed_min: 0.4
+    speed_max: 1.5
     vel_jitter_std: 0.02
     pos_noise_std: 0.2
-    boundary_mode: "clip"
-    band_drift_k: 0.4
-    band_max_step: 3
+    boundary_mode: "reflect"
+    band_drift_k: 0.6
+    band_max_step: 4
   strong_time:
     enable: false
     geo_speed: 0.4
@@ -79,8 +82,8 @@ model:
   dt_encoding: "raw"
   dt_freqs: [1, 2, 4, 8]
   band_feat_idx: 1
-  motion_gate: false
-  source_message: "bi"
+  motion_gate: true
+  source_message: "source_to_event"
 
 train:
   epochs: 10

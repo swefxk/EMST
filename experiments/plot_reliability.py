@@ -11,7 +11,13 @@ from torch_geometric.loader import NeighborLoader
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from models.st_event_kgc import STEventKGC
-from utils import expected_calibration_error, load_config, seed_everything, set_prev_event_edges
+from utils import (
+    expected_calibration_error,
+    filter_edge_types,
+    load_config,
+    seed_everything,
+    set_prev_event_edges,
+)
 
 
 def build_neighbor_loader(data, mask, num_neighbors, batch_size):
@@ -113,7 +119,11 @@ def main():
     parser.add_argument("--calib", default=None)
     parser.add_argument("--mc_dropout", type=int, default=0)
     parser.add_argument("--split", default="test", choices=["valid", "test"])
-    parser.add_argument("--prev_event", default="on", choices=["on", "zero_dt", "off"])
+    parser.add_argument(
+        "--prev_event",
+        default="on",
+        choices=["on", "zero_dt", "off", "shuffle_dt"],
+    )
     parser.add_argument(
         "--out",
         default="figures/reliability_diagram.png",
@@ -126,8 +136,13 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(args.data)
     set_prev_event_edges(data, args.split, mode=args.prev_event)
+    edge_types = filter_edge_types(
+        data.edge_types, config["model"].get("source_message", "bi")
+    )
 
     in_dims = {k: data[k].x.size(-1) for k in data.node_types}
+    dt_encoding = config["model"].get("dt_encoding", "raw")
+    dt_freqs = config["model"].get("dt_freqs", [1, 2, 4, 8])
     model = STEventKGC(
         in_dims=in_dims,
         num_geocell=data["geocell"].num_nodes,
@@ -136,6 +151,10 @@ def main():
         te_dim=config["model"]["te_dim"],
         heads=config["model"]["heads"],
         dropout=config["model"]["dropout"],
+        dt_encoding=dt_encoding,
+        dt_freqs=dt_freqs,
+        edge_types=edge_types,
+        motion_gate=config["model"].get("motion_gate", False),
     ).to(device)
     model.load_state_dict(torch.load(args.ckpt, map_location=device))
 

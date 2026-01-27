@@ -122,5 +122,29 @@ def set_prev_event_edges(data, split, mode="on"):
         elif mode == "zero_dt":
             edge_attr = data["event", "prev_event", "event"].edge_attr
             data["event", "prev_event", "event"].edge_attr = torch.zeros_like(edge_attr)
+        elif mode == "shuffle_dt":
+            edge_attr = data["event", "prev_event", "event"].edge_attr
+            if edge_attr.numel() > 0:
+                perm = torch.randperm(edge_attr.size(0))
+                data["event", "prev_event", "event"].edge_attr = edge_attr[perm]
         return True
     return False
+
+
+def filter_edge_types(edge_types, source_message="bi"):
+    if edge_types is None:
+        return None
+    if source_message not in ("bi", "source_to_event", "event_to_source", "none"):
+        return list(edge_types)
+    filtered = []
+    for edge_type in edge_types:
+        rel = edge_type[1]
+        if rel in ("from_source", "rev_from_source"):
+            if source_message == "none":
+                continue
+            if source_message == "source_to_event" and rel == "from_source":
+                continue
+            if source_message == "event_to_source" and rel == "rev_from_source":
+                continue
+        filtered.append(edge_type)
+    return filtered

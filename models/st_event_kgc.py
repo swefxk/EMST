@@ -16,6 +16,8 @@ class STEventKGC(nn.Module):
         dropout=0.2,
         dt_encoding="raw",
         dt_freqs=None,
+        edge_types=None,
+        motion_gate=False,
     ):
         super().__init__()
         if hidden_dim % heads != 0:
@@ -31,6 +33,8 @@ class STEventKGC(nn.Module):
             self.node_lin[node_type] = nn.Linear(in_dim, hidden_dim)
 
         self.dt_encoding = dt_encoding
+        self.motion_gate = motion_gate
+        self.edge_types = set(edge_types) if edge_types is not None else None
         if dt_freqs is None:
             dt_freqs = [1, 2, 4, 8]
         self.register_buffer(
@@ -44,29 +48,45 @@ class STEventKGC(nn.Module):
             nn.ReLU(),
             nn.Linear(te_dim, te_dim),
         )
+        if self.motion_gate:
+            self.dt_gate = nn.Sequential(nn.Linear(dt_in_dim, 1), nn.Sigmoid())
+        else:
+            self.dt_gate = None
 
         self.convs = nn.ModuleList()
         for _ in range(2):
+            rel_convs = {}
+            if self.edge_types is None or ("sensor", "rev_observed_by", "event") in self.edge_types:
+                rel_convs[("sensor", "rev_observed_by", "event")] = SAGEConv(
+                    (hidden_dim, hidden_dim), hidden_dim
+                )
+            if self.edge_types is None or ("sensor", "located_in", "geocell") in self.edge_types:
+                rel_convs[("sensor", "located_in", "geocell")] = SAGEConv(
+                    (hidden_dim, hidden_dim), hidden_dim
+                )
+            if self.edge_types is None or ("geocell", "rev_located_in", "sensor") in self.edge_types:
+                rel_convs[("geocell", "rev_located_in", "sensor")] = SAGEConv(
+                    (hidden_dim, hidden_dim), hidden_dim
+                )
+            if self.edge_types is None or ("source", "rev_from_source", "event") in self.edge_types:
+                rel_convs[("source", "rev_from_source", "event")] = SAGEConv(
+                    (hidden_dim, hidden_dim), hidden_dim
+                )
+            if self.edge_types is None or ("event", "from_source", "source") in self.edge_types:
+                rel_convs[("event", "from_source", "source")] = SAGEConv(
+                    (hidden_dim, hidden_dim), hidden_dim
+                )
+            if self.edge_types is None or ("event", "prev_event", "event") in self.edge_types:
+                rel_convs[("event", "prev_event", "event")] = TransformerConv(
+                    hidden_dim,
+                    hidden_dim // heads,
+                    heads=heads,
+                    edge_dim=te_dim,
+                    dropout=dropout,
+                )
             self.convs.append(
                 HeteroConv(
-                    {
-                        ("sensor", "rev_observed_by", "event"): SAGEConv(
-                            (hidden_dim, hidden_dim), hidden_dim
-                        ),
-                        ("sensor", "located_in", "geocell"): SAGEConv(
-                            (hidden_dim, hidden_dim), hidden_dim
-                        ),
-                        ("geocell", "rev_located_in", "sensor"): SAGEConv(
-                            (hidden_dim, hidden_dim), hidden_dim
-                        ),
-                        ("event", "prev_event", "event"): TransformerConv(
-                            hidden_dim,
-                            hidden_dim // heads,
-                            heads=heads,
-                            edge_dim=te_dim,
-                            dropout=dropout,
-                        ),
-                    },
+                    rel_convs,
                     aggr="sum",
                 )
             )
@@ -98,20 +118,22 @@ class STEventKGC(nn.Module):
         if ("event", "prev_event", "event") in data.edge_types:
             edge_attr = data["event", "prev_event", "event"].edge_attr
             if self.dt_encoding == "log":
-                dt_log = torch.log1p(edge_attr)
+                dt_feat = torch.log1p(edge_attr)
                 mean = getattr(data["event"], "prev_event_dt_log_mean", None)
                 std = getattr(data["event"], "prev_event_dt_log_std", None)
                 if mean is not None and std is not None:
                     mean = mean.to(edge_attr.device)
                     std = std.to(edge_attr.device)
-                    dt_log = (dt_log - mean) / std
-                encoded = dt_log
+                    dt_feat = (dt_feat - mean) / std
             elif self.dt_encoding == "sincos":
                 angles = edge_attr * (2 * torch.pi) * self.dt_freqs.to(edge_attr.device)
-                encoded = torch.cat([torch.sin(angles), torch.cos(angles)], dim=1)
+                dt_feat = torch.cat([torch.sin(angles), torch.cos(angles)], dim=1)
             else:
-                encoded = edge_attr
-            edge_attr_dict[("event", "prev_event", "event")] = self.time_mlp(encoded)
+                dt_feat = edge_attr
+            encoded = self.time_mlp(dt_feat)
+            if self.dt_gate is not None:
+                encoded = encoded * self.dt_gate(dt_feat)
+            edge_attr_dict[("event", "prev_event", "event")] = encoded
 
         for conv in self.convs:
             out_dict = conv(x_dict, edge_index_dict, edge_attr_dict)
