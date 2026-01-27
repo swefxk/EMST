@@ -48,15 +48,34 @@ def generate_sources(config, rng):
     nx = data_cfg["nx"]
     ny = data_cfg["ny"]
     num_bands = data_cfg["bands"]
+    motion_mode = src_cfg.get("motion_mode", "continuous")
     speed_min = float(src_cfg.get("speed_min", 0.2))
     speed_max = float(src_cfg.get("speed_max", 0.8))
     speed_max = max(speed_max, speed_min + 1e-6)
     sources = []
     for source_id in range(num_sources):
-        angle = rng.uniform(0, 2 * np.pi)
-        speed = rng.uniform(speed_min, speed_max)
-        vx = float(speed * np.cos(angle))
-        vy = float(speed * np.sin(angle))
+        if motion_mode == "discrete_step":
+            directions = [
+                (-1, 0),
+                (1, 0),
+                (0, -1),
+                (0, 1),
+                (-1, -1),
+                (-1, 1),
+                (1, -1),
+                (1, 1),
+            ]
+            dir_x, dir_y = directions[int(rng.integers(0, len(directions)))]
+            speed = float(src_cfg.get("step_long", 1))
+            vx = float(dir_x)
+            vy = float(dir_y)
+        else:
+            angle = rng.uniform(0, 2 * np.pi)
+            speed = rng.uniform(speed_min, speed_max)
+            vx = float(speed * np.cos(angle))
+            vy = float(speed * np.sin(angle))
+            dir_x = float(np.sign(vx) or 1.0)
+            dir_y = float(np.sign(vy) or 1.0)
         x_init = float(rng.uniform(0, nx - 1))
         y_init = float(rng.uniform(0, ny - 1))
         band_id = int(rng.integers(0, num_bands))
@@ -71,6 +90,8 @@ def generate_sources(config, rng):
                 "vy_norm": vy / speed_max,
                 "speed": speed,
                 "band_id": band_id,
+                "dir_x": dir_x,
+                "dir_y": dir_y,
             }
         )
     return sources
@@ -106,9 +127,12 @@ def generate_source_events(config, rng, sources):
     events_per_source = int(src_cfg.get("events_per_source", 120))
     start_frac = float(src_cfg.get("start_time_max_frac", 0.2))
     start_max = max(0, int(t_steps * start_frac))
+    motion_mode = src_cfg.get("motion_mode", "continuous")
     vel_jitter = float(src_cfg.get("vel_jitter_std", 0.02))
     pos_noise = float(src_cfg.get("pos_noise_std", 0.2))
     boundary_mode = src_cfg.get("boundary_mode", "clip")
+    step_short = int(src_cfg.get("step_short", 0))
+    step_long = int(src_cfg.get("step_long", 8))
     band_drift_k = float(src_cfg.get("band_drift_k", 0.4))
     band_max_step = int(src_cfg.get("band_max_step", 3))
 
@@ -125,16 +149,27 @@ def generate_source_events(config, rng, sources):
         y = float(source["y_init"])
         vx = float(source["vx"])
         vy = float(source["vy"])
+        dir_x = float(source.get("dir_x", 1.0))
+        dir_y = float(source.get("dir_y", 0.0))
         band_id = int(source["band_id"])
         for _ in range(events_per_source):
             dt = _sample_dt(rng, src_cfg)
             t += dt
             if t >= t_steps:
                 break
-            vx += rng.normal(0.0, vel_jitter)
-            vy += rng.normal(0.0, vel_jitter)
-            x = x + vx * dt + rng.normal(0.0, pos_noise)
-            y = y + vy * dt + rng.normal(0.0, pos_noise)
+            if motion_mode == "discrete_step":
+                step = (
+                    step_long
+                    if dt > int(src_cfg.get("dt_short_max", 2))
+                    else step_short
+                )
+                x = x + dir_x * step + rng.normal(0.0, pos_noise)
+                y = y + dir_y * step + rng.normal(0.0, pos_noise)
+            else:
+                vx += rng.normal(0.0, vel_jitter)
+                vy += rng.normal(0.0, vel_jitter)
+                x = x + vx * dt + rng.normal(0.0, pos_noise)
+                y = y + vy * dt + rng.normal(0.0, pos_noise)
             if boundary_mode == "reflect":
                 x = _reflect(x, 0, nx - 1)
                 y = _reflect(y, 0, ny - 1)
